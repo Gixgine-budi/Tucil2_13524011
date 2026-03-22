@@ -64,11 +64,16 @@ func main() {
 	end_time = time.Now()
 	obj4 := objFile4{}
 	node_count, no_explore_node, voxel_count := octToObj(&oct, subdivision_limit, &obj4)
-	obj4 = *compactObj4(&obj4)
 
 	fmt.Println("Octree to OBJ data type conversion completed")
 	end_time = time.Now()
 	fmt.Printf("Time taken to convert octree to OBJ data type: %s\n\n", end_time.Sub(start_time))
+
+	start_time = end_time
+	obj4 = *compactObj4(&obj4)
+	fmt.Println("OBJ data has been succesfully compacted")
+	end_time = time.Now()
+	fmt.Printf("Time taken to compact OBJ data: %s\n\n", end_time.Sub(start_time))
 
 	fmt.Printf("Number of voxels: %d\n", voxel_count)
 	fmt.Printf("Number of vertices: %d\n", len(obj4.vertices))
