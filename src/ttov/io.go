@@ -38,7 +38,10 @@ func scanObjFile(path string) (objFile, error) {
 		lineCount++
 
 		line := scanner.Text()
-		words := strings.Split(line, " ")
+		words := strings.Fields(line)
+		if len(words) == 0 {
+			continue
+		}
 
 		// verify if the line is a valid vertex or face
 		switch words[0] {
@@ -80,6 +83,8 @@ func scanObjFile(path string) (objFile, error) {
 					": expected vertex index, got " + words[4]}
 			}
 			obj.faces = append(obj.faces, face{vertices: [3]int{v1 - 1, v2 - 1, v3 - 1}})
+		case "#", "g", "vt", "vn", "vp", "l", "p", "o", "s", "mt", "usemtl", "mtllib", "shadow_obj", "trace_obj":
+			continue
 		default:
 			return objFile{}, &verifyError{message: "Invalid line type at line " + strconv.Itoa(lineCount) +
 				": expected v or f, got " + words[0]}
