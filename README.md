@@ -2,7 +2,9 @@
 
 ## Brief description
 
-This repository is **Tugas Kecil 2** for **IF2211 Strategi Algoritma**. The program **ttov** reads a triangle mesh in [Wavefront OBJ](https://en.wikipedia.org/wiki/Wavefront_.obj_file_format) format, fits an axis-aligned bounding cube around the mesh, and recursively subdivides that cube into an **octree** (8 children per level). At each leaf depth, voxels that intersect the mesh are kept; empty branches are not subdivided further. The result is exported as a **quad-dominant** OBJ mesh (`output4.obj`): each voxel becomes a box of six quadrilateral faces. Shared vertices are deduplicated before writing.
+This repository is **Tugas Kecil 2** for **IF2211 Strategi Algoritma**. The program **ttov** reads a triangle mesh in [Wavefront OBJ](https://en.wikipedia.org/wiki/Wavefront_.obj_file_format) format, fits an axis-aligned bounding cube around the mesh, and recursively subdivides that cube into an octree (8 children per level). At each leaf depth, voxels that intersect the mesh are kept; empty branches are not subdivided further. The result is exported as a **quad-dominant** OBJ mesh (`output4.obj`): each voxel becomes a box of six quadrilateral faces. Shared vertices are deduplicated before writing.
+
+Octree construction runs in parallel: each non-empty node starts eight goroutines for its octants (each worker sends one completed subtree on a shared channel). If `runtime.NumGoroutine()` is already above about twice `runtime.GOMAXPROCS(0)`, that call path builds the subtree with a breadth-first iterative routine instead, to avoid unbounded goroutine growth. Child pointers under a parallel parent are filled in completion order, not a fixed octant index; geometry in each node still uses the correct voxel bounds for export.
 
 ## Requirements and installation
 
@@ -19,7 +21,7 @@ The repo uses a **Go workspace** (`go.work`) so builds should be run from the **
 
 ## How to compile
 
-From the **root** of this repository (folder containing `go.work`):
+From the root of this repository (folder containing `go.work`):
 
 **Linux / WSL (Makefile)**
 
@@ -56,7 +58,7 @@ build.bat clean     # Windows
 ## How to run and use
 
 1. Build the program (see above).
-2. Run the executable **from the directory where you want `output4.obj` to be created** (the program writes `output4.obj` in the current working directory).
+2. Run the executable from the directory where you want `output4.obj` to be created (the program writes `output4.obj` in the current working directory).
 
 **Linux / WSL**
 
