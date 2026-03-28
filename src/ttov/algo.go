@@ -3,6 +3,7 @@ package main
 import (
 	"container/list"
 	"math"
+	"runtime"
 )
 
 // checkCollision reports whether the axis-aligned voxel vx intersects the
@@ -103,10 +104,9 @@ func checkCollision(vx voxel, fc face, obj *objFile) bool {
 	return true
 }
 
-// exploreObj builds an octree over the mesh bounding cube by subdividing into
-// eight children per level in parallel (goroutines per branch). subdivision_limit
-// is the maximum depth at which leaf nodes record whether any triangle intersects
-// their voxel.
+// exploreObj builds an octree over the mesh bounding cube. Each root octant is
+// started in its own goroutine; parallelExploreObj may use iterativeExploreObj
+// when runtime.NumGoroutine() is high (see parallelExploreObj).
 func exploreObj(source *objFile, subdivision_limit int) octree {
 	containing_cube := findContainingCube(source)
 	t := octree{root: &containing_cube, depth: 0, fill: true}
@@ -124,9 +124,16 @@ func exploreObj(source *objFile, subdivision_limit int) octree {
 }
 
 // parallelExploreObj tests containing_cube against faces in fc, sets fill flags,
-// and either returns a leaf or spawns eight recursive explorations. Results are
-// sent on ch when the subtree for this cube is complete.
+// and either returns a leaf or spawns eight recursive explorations. If
+// runtime.NumGoroutine() already exceeds about twice GOMAXPROCS, the subtree is
+// built with iterativeExploreObj instead (avoids unbounded goroutine growth while
+// still allowing the initial octant fan-out before the count grows).
 func parallelExploreObj(source *objFile, fc *[]face, containing_cube voxel, depth int, subdivision_limit int, ch chan *octree) {
+	if runtime.NumGoroutine() > runtime.GOMAXPROCS(0)*2 {
+		ch <- iterativeExploreObj(source, fc, containing_cube, depth, subdivision_limit)
+		return
+	}
+
 	t := octree{root: &containing_cube, depth: depth}
 	collided_fc := make([]face, 0)
 
@@ -160,6 +167,70 @@ func parallelExploreObj(source *objFile, fc *[]face, containing_cube voxel, dept
 	}
 
 	ch <- &t
+}
+
+// iterativeExploreObj builds the same subtree as parallelExploreObj using a
+// breadth-first queue instead of goroutines. fc points to the face slice visible
+// at this level (e.g. source.faces or a parent's collided list); face indices are
+// always interpreted against *fc. Voxels are heap-allocated so *voxel fields in
+// the tree stay valid after local temporaries go away.
+func iterativeExploreObj(source *objFile, fc *[]face, containing_cube voxel, depth int, subdivision_limit int) *octree {
+	root := &octree{root: &containing_cube, depth: depth}
+
+	faceIdx := make([]int, len(*fc))
+	for i := range *fc {
+		faceIdx[i] = i
+	}
+
+	type job struct {
+		node  *octree
+		cube  voxel
+		faces []int
+		depth int
+	}
+
+	queue := make([]job, 0, 1024)
+	queue = append(queue, job{node: root, cube: containing_cube, faces: faceIdx, depth: depth})
+
+	for len(queue) > 0 {
+		j := queue[0]
+		queue = queue[1:]
+
+		t := j.node
+		cube := j.cube
+		faces := j.faces
+		d := j.depth
+
+		var collided []int
+		for _, fi := range faces {
+			if checkCollision(cube, (*fc)[fi], source) {
+				collided = append(collided, fi)
+			}
+		}
+
+		if d >= subdivision_limit {
+			t.fill = len(collided) > 0
+			continue
+		}
+		if len(collided) == 0 {
+			t.fill = false
+			continue
+		}
+
+		t.fill = true
+		subs := cube.subdivide()
+		for i := 0; i < 8; i++ {
+			t.children[i] = &octree{root: &subs[i], depth: d + 1}
+			queue = append(queue, job{
+				node:  t.children[i],
+				cube:  subs[i],
+				faces: collided,
+				depth: d + 1,
+			})
+		}
+	}
+
+	return root
 }
 
 // findContainingCube returns the smallest axis-aligned cube that encloses all
